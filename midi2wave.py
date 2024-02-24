@@ -11,7 +11,7 @@ from music21.midi import MidiEvent, DeltaTime, ChannelVoiceMessages
 
 def create_fluidsynth() -> fluidsynth.Synth:
     # Initialize FluidSynth
-    synth = fluidsynth.Synth(gain=1.0, samplerate=44100, channels=1)
+    synth = fluidsynth.Synth(gain=0.98, samplerate=44100, channels=1)
     synth.start()
     return synth
 
@@ -112,7 +112,6 @@ if __name__ == "__main__":
                                       soundfont_filename="soundfonts/organ/Aggorg.sf2",
                                       sample_rate=44100))
     fl.delete()
-    print(s.shape, s.dtype, type(s), np.min(s), np.max(s))
     print(f"Created a numpy array with shape {s.shape} of type {s.dtype} with values in the range {np.min(s)} to {np.max(s)}.")
     samps = fluidsynth.raw_audio_string(s)
     print('Starting playback')
