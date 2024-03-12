@@ -2,6 +2,7 @@ from typing import List, Dict
 import torch
 from torch.distributions import uniform
 from emotional_narrative import EmotionSequenceGenerator
+from typing import cast
 import os
 
 
@@ -70,6 +71,14 @@ class InstrumentCue(MusicalModifier):
     def category(self) -> str:
         return "instrument_cue"
 
+    @property
+    def on(self) -> bool:
+        return self.on_off > 0
+
+    @property
+    def off(self) -> bool:
+        return not self.on
+
 
 class KeyChange(MusicalModifier):
     def __init__(self, key: int, emo_vector: torch.Tensor = None):
@@ -99,11 +108,16 @@ class EffectChange(MusicalModifier):
 
 class MovementComposer:
     def __init__(self,
+                 emo_sequence: torch.Tensor, emo_sequence_offset: int = 0,
                  emo_state_init: torch.Tensor = torch.zeros(5),
                  key_init: int = torch.randint(-11, 12, [1])):
+        self.emo_sequence = emo_sequence
+        self.emo_seq_pos = emo_sequence_offset
         self.emo_state = emo_state_init
         self.key = key_init
-        self.modifiers = []
+        self.instrument_tracks: List[InstrumentCue] = []
+        self.active_instrument_tracks: List[InstrumentCue] = []
+        self.modifiers: List[MusicalModifier] = []
         progressions = [
             [1, 5, -4, 4]
         ]
@@ -114,32 +128,41 @@ class MovementComposer:
             self.modifiers += [InstrumentCue(instrument_type, 1), InstrumentCue(instrument_type, 0)]
         self.modifiers += [KeyChange(key_no) for key_no in range(-11, 12)]
         self.modifiers.append(EffectChange({"reverb": +0.5}))
+        self.composition: List[List[MusicalModifier]] = [[]]
 
-    def compose_movement(self, emotion_sequence: torch.Tensor) -> List[Dict]:
-        movement = []
-        delta_emotions = emotion_sequence[1:] - emotion_sequence[:-1]
-        for delta_emotion in delta_emotions:
-            modifiers = self.select_modifiers(delta_emotion)
-            movement.append(modifiers)
-        return movement
+    def compose_movement(self) -> List[List[MusicalModifier]]:
+        next_emo = self.emo_sequence[self.emo_seq_pos]
+        emotion_delta = next_emo - self.emo_state
+        self.select_modifier(self.filter_modifiers(emotion_delta), emotion_delta, next_emo[4])
+        # add to composition
+        return self.composition
 
-    def select_modifiers(self, delta_emotion: torch.Tensor) -> List[Dict]:
-        selected_modifiers = []
-        for category, modifier_vectors in self.MODIFIER_VECTORS.items():
-            if self.randomness == 0:
-                modifier_idx = torch.argmax(torch.dot(delta_emotion, modifier_vectors)).item()
-                selected_modifiers.append({category: self.CATEGORIES[category][modifier_idx]})
-            else:
-                for modifier_idx, modifier_vector in enumerate(modifier_vectors):
-                    if torch.dot(delta_emotion, modifier_vector) > 0:
-                        selected_modifiers.append({category: self.CATEGORIES[category][modifier_idx]})
-        return selected_modifiers
+    def filter_modifiers(self, emotion_delta: torch.Tensor) -> List[MusicalModifier]:
+        used_up_categories = set()
+        for modifier in self.composition[-1]:
+            used_up_categories.add(modifier.category)
+        filtered_modifiers = []
+        for modifier in self.modifiers:
+            if modifier.category in used_up_categories:
+                continue
+            if type(modifier) is KeyChange and cast(KeyChange, modifier).new_key == self.key:
+                continue
+            if type(modifier) is InstrumentCue:
+                inst_cue = cast(InstrumentCue, modifier)
+                if inst_cue.off and inst_cue not in self.active_instrument_tracks:
+                    continue
+            filtered_modifiers.append(modifier)
+        return filtered_modifiers
+
+    def select_modifier(self,
+                        filtered_modifiers: List[MusicalModifier],
+                        emotion_delta: torch.Tensor,
+                        randomness: torch.Tensor):
+        offered_emo_matrix = torch.stack([m.emo_vector for m in filtered_modifiers])
+        distances = torch.sqrt(torch.sum((offered_emo_matrix - emotion_delta) ** 2, dim=1))
+        modifier_id = torch.multinomial(torch.nn.Softmax().forward(distances + randomness), 1, replacement=False)
+        # modifier_idx = torch.argmax(torch.dot(delta_emotion, modifier_vectors)).item()
 
 
 if __name__ == "__main__":
-    x = MovementComposer()
-    d = {}
-    for m in x.modifiers:
-        print(m, m.category)
-        d[str(m)] = vars(m)
-    print(d.keys(), [str(d[g]['emo_vector']) for g in d])
+    print("Hello!")
