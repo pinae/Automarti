@@ -15,7 +15,8 @@ mir-eval = "*"
 pyfluidsynth = "*"
 pyaudio = "*"
 music21 = "*"
-pygame = "*"
+pedalboard = "*"
+mido = "*"
 
 [dev-packages]
 

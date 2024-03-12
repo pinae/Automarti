@@ -164,3 +164,6 @@ data/
 
 # Sound fonts
 soundfonts/
+
+# Test samples
+samples/
